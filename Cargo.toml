@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Hayden"]
 description = "Grok in the terminal"
-repository = ""
+repository = "https://github.com/haydenzeller/grok-cli.git"
 license = "mit"
 
 [[bin]]
