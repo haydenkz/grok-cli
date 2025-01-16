@@ -1,0 +1,23 @@
+[package]
+name = "grok-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hayden"]
+description = "Grok in the terminal"
+repository = ""
+license = "mit"
+
+[[bin]]
+name = "grok"
+path = "src/main.rs"
+
+[package.metadata.aur]
+files = [
+    ["config.template", "/etc/grok/config"]
+]
+
+[dependencies]
+reqwest = "0.11"
+tokio = { version = "1.43.0", features = ["full"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+
