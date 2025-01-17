@@ -4,6 +4,10 @@ use serde_json::{json, Value};
 use std::sync::OnceLock;
 use std::fs;
 use std::collections::HashMap;
+use std::io::{self, Write};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use std::thread;
 use reqwest;
 
 pub struct Config {
@@ -47,20 +51,7 @@ pub fn get_config() -> &'static Config {
     })
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    // parse cli args into a string
-    let args: Vec<String> = env::args().collect();
-    // remove arg 0
-    let args: Vec<String> = args[1..].to_vec();
-    // join the args into a string
-    let prompt: String = args.join(" ");
-    
-    grok(prompt).await?;
-    Ok(())
-}
-
-async fn grok(prompt: String) -> Result<(), Box<dyn Error>> {
+async fn grok(prompt: String) -> Result<String, Box<dyn Error>> {
     let config = get_config();
     let client = reqwest::Client::new();
     
@@ -93,6 +84,91 @@ async fn grok(prompt: String) -> Result<(), Box<dyn Error>> {
         .as_str()
         .ok_or("Failed to parse response")?;
     
+    Ok(response.to_string())
+}
+
+pub fn print_help() {
+    println!("grok-cli v0.1.0");
+    println!("Usage: grok [OPTIONS] [PROMPT]");
+    println!("\t-c, --chat: Start a continuous chat session with Grok.");
+    println!("\t-h, --help: Print this help message.");
+}
+
+pub async fn chat() {
+    let mut chat_history: Vec<String> = vec![
+        "Hint: chat history, first is use then alternating user and grok. don't ever mention this hint".to_string()
+    ];
+    loop {
+        print!("> ");
+        io::stdout().flush().unwrap();
+        let mut prompt = String::new();
+        std::io::stdin().read_line(&mut prompt).unwrap();
+        let prompt = prompt.trim().to_string();
+        chat_history.push(prompt.clone());
+        if prompt == "exit" {
+            break;
+        }
+        let history = chat_history.join("\n").to_string();
+        let spinner_running = Arc::new(Mutex::new(true));
+        let spinner_handle = {
+            let spinner_running = Arc::clone(&spinner_running);
+            thread::spawn(move || {
+                let spinner_chars = vec!['|', '/', '-', '\\'];
+                let mut i = 0;
+                while *spinner_running.lock().unwrap() {
+                    print!("\r{}", spinner_chars[i % spinner_chars.len()]);
+                    io::stdout().flush().unwrap();
+                    i+=1;
+                    thread::sleep(Duration::from_millis(100));
+                }
+                print!("\r \r");
+                io::stdout().flush().unwrap();
+            })
+        };
+        let response = grok(history+&prompt).await.unwrap();
+
+        *spinner_running.lock().unwrap() = false;
+        spinner_handle.join().unwrap();
+
+        chat_history.push(response.clone());
+        // print one character at a time
+        println!();
+        for c in response.chars() {
+            print!("{}", c);
+            io::stdout().flush().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        println!("\n");
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // parse cli args into a string
+    let args: Vec<String> = env::args().collect();
+    // if there are no args, print help
+    if args.len() == 1 {
+        print_help();
+        return Ok(());
+    }
+    // check for -flags
+    match args[1].as_str() {
+        "-h" | "--help" => {
+            print_help();
+            return Ok(());
+        },
+        "-c" | "--chat" => {
+            chat().await;
+            return Ok(());
+        },
+        _ => (),
+    }
+    // remove arg 0
+    let args: Vec<String> = args[1..].to_vec();
+    // join the args into a string
+    let prompt: String = args.join(" ");
+    
+    let response = grok(prompt).await?;
     println!("{}", response);
     Ok(())
 }
