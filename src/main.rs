@@ -144,6 +144,67 @@ pub async fn chat() {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+
+    //check if config file exists
+    if !std::path::Path::new("/etc/grok/config").exists() {
+        println!("Config file not found at /etc/grok/config");
+        print!("Would you like to create one? [Y/n]: ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        let mut endpoint = String::new();
+        let mut key = String::new();
+
+        io::stdin().read_line(&mut input).unwrap();
+
+        if input.trim() == "n" {
+            println!("Exiting...");
+            return Ok(());
+        } else {
+            //elevate permissions
+            let output = std::process::Command::new("sudo")
+                .arg("mkdir")
+                .arg("/etc/grok/")
+                .output()
+                .expect("Failed to create config directory");
+            if !output.status.success() {
+                println!("Failed to create config directory");
+                return Ok(());
+            }
+
+            let output = std::process::Command::new("sudo")
+                .arg("touch")
+                .arg("/etc/grok/config")
+                .output()
+                .expect("Failed to create config file");
+            if !output.status.success() {
+                println!("Failed to create config file");
+                return Ok(());
+            }
+            
+            if output.status.success() {
+                print!("Enter X-AI-ENDPOINT: ");
+                io::stdout().flush().unwrap();
+                io::stdin().read_line(&mut endpoint).unwrap();
+                print!("Enter X-AI-KEY: ");
+                io::stdout().flush().unwrap();
+                io::stdin().read_line(&mut key).unwrap();
+
+                // write api key and endpoint to config file use cat to append
+                let config_content = format!("X-AI-ENDPOINT=\"{}\"\nX-AI-KEY=\"{}\"\n", endpoint.trim(), key.trim());
+                let output = std::process::Command::new("sudo")
+                    .arg("sh")
+                    .arg("-c")
+                    .arg(format!("echo '{}' > /etc/grok/config", config_content))
+                    .output()
+                    .expect("Failed to write to config file");
+                if !output.status.success() {
+                    println!("Failed to write to config file");
+                    return Ok(());
+                }
+            }
+        }
+    }
     // parse cli args into a string
     let args: Vec<String> = env::args().collect();
     // if there are no args, print help
