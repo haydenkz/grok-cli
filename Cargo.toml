@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2021"
 authors = ["Hayden"]
 description = "Grok in the terminal"
-repository = "https://github.com/haydenzeller/grok-cli.git"
+repository = "https://github.com/haydenzeller/grok-cli"
 license = "mit"
 
 [[bin]]
@@ -15,6 +15,7 @@ path = "src/main.rs"
 files = [
     ["config.template", "/etc/grok/config"]
 ]
+
 
 [dependencies]
 reqwest = "0.11"
