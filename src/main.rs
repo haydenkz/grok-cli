@@ -88,7 +88,7 @@ async fn grok(prompt: String) -> Result<String, Box<dyn Error>> {
 }
 
 pub fn print_help() {
-    println!("grok-cli v0.1.0");
+    println!("grok-cli v1.1.0");
     println!("Usage: grok [OPTIONS] [PROMPT]");
     println!("\t-c, --chat: Start a continuous chat session with Grok.");
     println!("\t-h, --help: Print this help message.");
