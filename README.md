@@ -1,6 +1,6 @@
 # Grok-CLI
 
-Rust program to send chat queries to your X.AI endpoint
+Rust program to send queries to your X.AI endpoint
 
 # Installation
 ```bash
