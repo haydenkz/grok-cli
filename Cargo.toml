@@ -1,10 +1,10 @@
 [package]
 name = "grok-cli"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 authors = ["Hayden"]
 description = "Grok in the terminal"
-repository = "https://github.com/haydenzeller/grok-cli"
+repository = "https://github.com/haydenkz/grok-cli"
 license = "mit"
 
 [[bin]]

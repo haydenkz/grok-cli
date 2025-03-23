@@ -1,2 +1,3 @@
 X-AI-KEY="yourkey"
 X-AI-ENDPOINT="endpoint"
+X-AI-IMAGE-ENDPOINT="image_endpoint"

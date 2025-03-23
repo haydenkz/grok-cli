@@ -13,6 +13,7 @@ use reqwest;
 pub struct Config {
     pub endpoint: String,
     pub key: String,
+    pub image_endpoint: String,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -46,6 +47,9 @@ pub fn get_config() -> &'static Config {
                 .clone(),
             key: values.get("X-AI-KEY")
                 .expect("Missing X-AI-KEY")
+                .clone(),
+            image_endpoint: values.get("X-AI-IMAGE-ENDPOINT")
+                .unwrap_or(&"".to_string())
                 .clone(),
         }
     })
@@ -87,10 +91,78 @@ async fn grok(prompt: String) -> Result<String, Box<dyn Error>> {
     Ok(response.to_string())
 }
 
+async fn generate_image(prompt: String) -> Result<String, Box<dyn Error>> {
+    let config = get_config();
+    if config.image_endpoint.is_empty() {
+        return Err("Image endpoint not configured in /etc/grok/config".into());
+    }
+    
+    let client = reqwest::Client::new();
+    
+    let res = client.post(&config.image_endpoint)
+        .header("X-API-KEY", &config.key)
+        .header("Content-Type", "application/json")
+        .body(
+            json!({
+                "prompt": prompt, 
+                "model": "grok-2-image",
+                "response_format": "url",
+                "n": 1
+            })
+            .to_string()
+        )
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request, check config: {}", e))?;
+        
+    let body = res.text().await?;
+    let message: Value = serde_json::from_str(&body)?;
+    
+    // Check if the data array exists and has at least one element
+    if let Some(data_array) = message.get("data").and_then(|d| d.as_array()) {
+        if !data_array.is_empty() {
+            let first_image = &data_array[0];
+            let image_url = first_image.get("url")
+                .and_then(|u| u.as_str())
+                .ok_or("No URL found in response")?;
+                
+            // If there's a revised prompt, display it
+            if let Some(revised_prompt) = first_image.get("revised_prompt").and_then(|p| p.as_str()) {
+                println!("\nRevised prompt: {}\n", revised_prompt);
+            }
+            
+            return Ok(image_url.to_string());
+        }
+    }
+    
+    Err("No image data found in response".into())
+}
+
+fn open_url(url: &str) -> Result<(), Box<dyn Error>> {
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+            
+        // Give the browser a moment to open before returning
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    
+    // Clear any lingering output
+    print!("\r\x1B[K");
+    io::stdout().flush()?;
+    
+    Ok(())
+}
+
 pub fn print_help() {
-    println!("grok-cli v1.1.0");
+    println!("grok-cli v1.2.0");
     println!("Usage: grok [OPTIONS] [PROMPT]");
     println!("\t-c, --chat: Start a continuous chat session with Grok.");
+    println!("\t-i, --image: Generate an image and display in browser.");
     println!("\t-h, --help: Print this help message.");
 }
 
@@ -154,6 +226,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut input = String::new();
         let mut endpoint = String::new();
         let mut key = String::new();
+        let mut image_endpoint = String::new();
 
         io::stdin().read_line(&mut input).unwrap();
 
@@ -189,9 +262,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 print!("Enter X-AI-KEY: ");
                 io::stdout().flush().unwrap();
                 io::stdin().read_line(&mut key).unwrap();
+                print!("Enter X-AI-IMAGE-ENDPOINT: ");
+                io::stdout().flush().unwrap();
+                io::stdin().read_line(&mut image_endpoint).unwrap();
 
                 // write api key and endpoint to config file use cat to append
-                let config_content = format!("X-AI-ENDPOINT=\"{}\"\nX-AI-KEY=\"{}\"\n", endpoint.trim(), key.trim());
+                let config_content = format!("X-AI-ENDPOINT=\"{}\"\nX-AI-KEY=\"{}\"\nX-AI-IMAGE-ENDPOINT=\"{}\"\n", 
+                    endpoint.trim(), key.trim(), image_endpoint.trim());
                 let output = std::process::Command::new("sudo")
                     .arg("sh")
                     .arg("-c")
@@ -220,6 +297,52 @@ async fn main() -> Result<(), Box<dyn Error>> {
         },
         "-c" | "--chat" => {
             chat().await;
+            return Ok(());
+        },
+        "-i" | "--image" => {
+            if args.len() < 3 {
+                println!("Please provide a prompt for image generation");
+                return Ok(());
+            }
+            
+            let img_args: Vec<String> = args[2..].to_vec();
+            let img_prompt = img_args.join(" ");
+            
+            println!("Generating image for prompt: {}", img_prompt);
+            
+            // Create and start spinner
+            let spinner_running = Arc::new(Mutex::new(true));
+            let spinner_handle = {
+                let spinner_running = Arc::clone(&spinner_running);
+                thread::spawn(move || {
+                    let spinner_chars = vec!['|', '/', '-', '\\'];
+                    let mut i = 0;
+                    while *spinner_running.lock().unwrap() {
+                        print!("\r{}", spinner_chars[i % spinner_chars.len()]);
+                        io::stdout().flush().unwrap();
+                        i+=1;
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                    print!("\r \r");
+                    io::stdout().flush().unwrap();
+                })
+            };
+            
+            // Generate image
+            let image_url = generate_image(img_prompt).await?;
+            
+            // Stop spinner
+            *spinner_running.lock().unwrap() = false;
+            spinner_handle.join().unwrap();
+            
+            println!("Image generated. URL: {}", image_url);
+            println!("Press Enter to open in browser...");
+            
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            
+            open_url(&image_url)?;
+            
             return Ok(());
         },
         _ => (),
